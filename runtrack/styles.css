@@ -102,8 +102,35 @@ a { color: var(--brand-ink); }
     font-weight: 700;
 }
 
+html {
+    -webkit-text-size-adjust: 100%;
+    overscroll-behavior-y: none;
+}
+
+a, button, label, input, select, textarea { -webkit-tap-highlight-color: transparent; }
+
+.topbar { padding-top: env(safe-area-inset-top); }
+
+.nav svg {
+    display: none;
+    width: 24px;
+    height: 24px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.nav .nav-record { display: none; }
+
 /* bottom tab bar on phones */
 @media (max-width: 640px) {
+    body { padding-bottom: calc(72px + env(safe-area-inset-bottom)); }
+
+    .topbar-inner { justify-content: space-between; height: 52px; }
+    .record-btn { display: none; }
+
     .nav {
         position: fixed;
         bottom: 0;
@@ -112,11 +139,134 @@ a { color: var(--brand-ink); }
         background: var(--surface);
         border-top: 1px solid var(--border);
         justify-content: space-around;
-        padding: 6px 0 10px;
+        padding: 4px 4px calc(6px + env(safe-area-inset-bottom));
         z-index: 1000;
+        gap: 0;
     }
-    .topbar-inner { justify-content: space-between; }
+
+    .nav a {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 2px;
+        padding: 6px 0;
+        font-size: 0.7em;
+        min-height: 52px;
+        justify-content: center;
+    }
+
+    .nav a:hover { background: none; }
+    .nav svg { display: block; }
+
+    .nav .nav-record { display: flex; color: var(--brand); }
+    .nav .nav-record svg { fill: var(--brand); stroke: none; width: 30px; height: 30px; }
+
+    main { padding: 12px 12px; }
+    .card { padding: 16px; border-radius: 10px; margin-bottom: 12px; }
+    h1.page-title { font-size: 1.35em; }
+    .stats { gap: 18px; }
+    .stat .value { font-size: 1.2em; }
+    .btn { min-height: 44px; }
+    .map { height: 280px; }
+
+    /* The record screen goes full-bleed: map on top, controls in a bottom sheet. */
+    body.on-record { padding-bottom: 0; }
+    body.on-record.rec-active .nav { display: none; }
+    body.on-record:not(.rec-active) .rec-sheet { padding-bottom: calc(80px + env(safe-area-inset-bottom)); }
+    body.on-record main { padding: 0; }
+    body.on-record #rec-map {
+        height: calc(100dvh - 52px - env(safe-area-inset-top) - var(--sheet-h, 260px));
+        min-height: 200px;
+        border-radius: 0;
+        border: none;
+        margin: 0;
+    }
+    body.on-record .rec-sheet {
+        border-radius: 16px 16px 0 0;
+        margin: -16px 0 0;
+        position: relative;
+        z-index: 1;
+        border-left: none;
+        border-right: none;
+        padding-bottom: calc(16px + env(safe-area-inset-bottom));
+    }
+    body.on-record .draft-card { margin: 12px; }
 }
+
+/* Big round controls for use mid-run. */
+.round-btn {
+    width: 76px;
+    height: 76px;
+    border-radius: 50%;
+    border: none;
+    font-weight: 700;
+    font-size: 0.95em;
+    cursor: pointer;
+    font-family: inherit;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.18);
+}
+
+.round-btn.go { background: var(--brand); color: #fff; }
+.round-btn.stop { background: var(--surface); color: var(--text); border: 2px solid var(--border); }
+.round-btn.lg { width: 92px; height: 92px; font-size: 1.05em; }
+
+.record-options {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+    margin-top: 6px;
+}
+
+.record-options label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 32px;
+}
+
+.lock-btn {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+}
+
+.locked-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 3000;
+    background: rgba(0,0,0,0.55);
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    padding-bottom: calc(40px + env(safe-area-inset-bottom));
+    touch-action: none;
+}
+
+.locked-overlay button {
+    background: var(--surface);
+    color: var(--text);
+    border: none;
+    border-radius: 30px;
+    padding: 16px 28px;
+    font-weight: 700;
+    font-family: inherit;
+    font-size: 1em;
+}
+
+.install-banner {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.install-banner img { width: 44px; height: 44px; border-radius: 10px; }
+.install-banner div { flex: 1; }
 
 /* ---------- layout ---------- */
 main {
@@ -332,11 +482,22 @@ label.field select {
     gap: 8px;
 }
 
-.record-stats .value { font-size: 2em; }
+.record-stats .value { font-size: 2em; font-variant-numeric: tabular-nums; }
+
+.record-stats.big {
+    grid-template-columns: 1fr 1fr;
+}
+
+.record-stats.big .primary {
+    grid-column: 1 / -1;
+}
+
+.record-stats.big .primary .value { font-size: 3.2em; line-height: 1.1; }
 
 .record-controls {
     display: flex;
-    gap: 12px;
+    gap: 24px;
+    align-items: center;
     justify-content: center;
     margin-top: 20px;
     flex-wrap: wrap;
@@ -459,7 +620,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 
 .toast {
     position: fixed;
-    bottom: 90px;
+    bottom: calc(90px + env(safe-area-inset-bottom));
     left: 50%;
     transform: translateX(-50%);
     background: var(--text);

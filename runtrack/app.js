@@ -122,6 +122,82 @@ function routeThumb(points) {
     return `<svg class="route-thumb" viewBox="${-padX} ${-padY} ${w + 2 * padX} ${h + 2 * padY}" preserveAspectRatio="xMidYMid meet" aria-hidden="true"><polyline points="${pts}"/></svg>`;
 }
 
+function buzz(pattern) {
+    try { navigator.vibrate?.(pattern); } catch {}
+}
+
+// Spoken updates so you don't have to look at the phone mid-run.
+function say(text) {
+    if (!Store.settings().voiceCues || !window.speechSynthesis) return;
+    try {
+        const u = new SpeechSynthesisUtterance(text);
+        u.rate = 1;
+        speechSynthesis.cancel();
+        speechSynthesis.speak(u);
+    } catch {}
+}
+
+function spokenDuration(sec) {
+    sec = Math.round(sec);
+    const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s = sec % 60;
+    const parts = [];
+    if (h) parts.push(`${h} hour${h === 1 ? '' : 's'}`);
+    if (m) parts.push(`${m} minute${m === 1 ? '' : 's'}`);
+    if (s || !parts.length) parts.push(`${s} second${s === 1 ? '' : 's'}`);
+    return parts.join(' ');
+}
+
+// ---------- install as an app ----------
+
+let installPrompt = null;
+window.addEventListener('beforeinstallprompt', e => {
+    e.preventDefault();
+    installPrompt = e;
+    if ((location.hash || '#/feed').startsWith('#/feed') || location.hash.startsWith('#/settings')) router();
+});
+window.addEventListener('appinstalled', () => { installPrompt = null; toast('RunTrack installed'); });
+
+function isStandalone() {
+    return matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+}
+
+function isIOS() {
+    return /iphone|ipad|ipod/i.test(navigator.userAgent) ||
+        (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+}
+
+function installCard({ dismissible }) {
+    if (isStandalone()) return '';
+    if (dismissible) {
+        try { if (localStorage.getItem('runtrack.installDismissed')) return ''; } catch {}
+    }
+    let body;
+    if (installPrompt) {
+        body = '<div><strong>Install RunTrack</strong><div class="muted small">Add it to your home screen and use it like an app, even offline.</div></div><button class="btn btn-primary" id="install-btn">Install</button>';
+    } else if (isIOS()) {
+        body = '<div><strong>Install RunTrack</strong><div class="muted small">In Safari, tap the Share button, then <b>Add to Home Screen</b>.</div></div>';
+    } else if (!dismissible) {
+        body = '<div><strong>Install RunTrack</strong><div class="muted small">Open this page in Chrome or Safari on your phone and use “Add to Home Screen” / “Install app”.</div></div>';
+    } else {
+        return '';
+    }
+    return `<div class="card install-banner"><img src="icons/icon-192.png" alt="">${body}${dismissible ? '<button class="btn" id="install-dismiss" aria-label="Dismiss">✕</button>' : ''}</div>`;
+}
+
+function bindInstallCard() {
+    document.getElementById('install-btn')?.addEventListener('click', async () => {
+        if (!installPrompt) return;
+        installPrompt.prompt();
+        await installPrompt.userChoice.catch(() => {});
+        installPrompt = null;
+        router();
+    });
+    document.getElementById('install-dismiss')?.addEventListener('click', e => {
+        try { localStorage.setItem('runtrack.installDismissed', '1'); } catch {}
+        e.target.closest('.card').remove();
+    });
+}
+
 // ---------- router ----------
 
 const routes = {
@@ -137,11 +213,17 @@ function router() {
     const [name = 'feed', param] = location.hash.replace(/^#\/?/, '').split('/');
     if (cleanupView) { cleanupView(); cleanupView = null; }
     document.querySelectorAll('.nav a').forEach(a => a.classList.toggle('active', a.dataset.route === name));
+    document.body.classList.toggle('on-record', name === 'record');
     window.scrollTo(0, 0);
     (routes[name] || renderFeed)(param);
 }
 
 window.addEventListener('hashchange', router);
+
+// The OS drops the screen wake lock whenever the page is hidden; take it back.
+document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') Rec.keepAwake();
+});
 
 // ---------- feed ----------
 
@@ -179,7 +261,8 @@ function renderFeed() {
             </div>
         </div>`;
 
-    app.innerHTML = `<div class="grid-2"><aside>${sidebar}</aside><section>${feed}</section></div>`;
+    app.innerHTML = `${installCard({ dismissible: true })}<div class="grid-2"><aside>${sidebar}</aside><section>${feed}</section></div>`;
+    bindInstallCard();
     document.getElementById('load-samples')?.addEventListener('click', () => {
         Store.loadSamples();
         toast('Sample runs loaded');
@@ -404,12 +487,36 @@ const Rec = {
                 if (this.needBreak || (d >= 3 && dt > 0 && d / dt < 12)) {
                     if (!this.needBreak) this.distance += d;
                     this.points.push(point);
+                    this.checkSplit();
                 }
             }
             this.needBreak = false;
             if (this.points.length % 5 === 0) this.saveDraft();
         }
         this.emit();
+    },
+
+    // Announce each completed km/mile.
+    checkSplit() {
+        const unit = Geo.unitMeters(units());
+        const done = Math.floor(this.distance / unit);
+        if (done <= this.splitsAnnounced) return;
+        const t = this.timer();
+        const splitTime = t - this.lastSplitAt;
+        this.splitsAnnounced = done;
+        this.lastSplitAt = t;
+        buzz([200, 100, 200]);
+        const name = units() === 'mi' ? 'mile' : 'kilometre';
+        say(`${done} ${name}${done === 1 ? '' : 's'}. Time ${spokenDuration(t)}. ` +
+            `Average pace ${spokenDuration(t / done)} per ${name}. Last split ${spokenDuration(splitTime)}.`);
+    },
+
+    async keepAwake() {
+        if (this.status === 'idle' || this.wakeLock) return;
+        try {
+            this.wakeLock = await navigator.wakeLock?.request('screen');
+            this.wakeLock?.addEventListener?.('release', () => { this.wakeLock = null; });
+        } catch {}
     },
 
     saveDraft() {
@@ -469,14 +576,19 @@ const Rec = {
         this.simReal = Date.now();
         this.startedAt = this.now();
         this.status = 'recording';
+        this.splitsAnnounced = 0;
+        this.lastSplitAt = 0;
         this.startGPS();
-        try { this.wakeLock = await navigator.wakeLock?.request('screen'); } catch {}
+        buzz(300);
+        say('Run started');
+        this.keepAwake();
         this.emit();
     },
 
-    pause() {
+    pause(silent = false) {
         this.status = 'paused';
         this.pauseStart = this.now();
+        if (!silent) { buzz(150); say('Run paused'); }
         this.emit();
     },
 
@@ -485,11 +597,14 @@ const Rec = {
         this.pausedMs += this.now() - this.pauseStart;
         this.needBreak = this.points.length > 0;
         this.status = 'recording';
+        buzz(150);
+        say('Run resumed');
+        this.keepAwake();
         this.emit();
     },
 
     finish() {
-        if (this.status === 'recording') this.pause();
+        if (this.status === 'recording') this.pause(true);
         this.stopGPS();
         this.wakeLock?.release?.();
         this.wakeLock = null;
@@ -510,15 +625,15 @@ function renderRecord() {
 
     app.innerHTML = `
         ${draft && draft.points?.length > 1 ? `
-            <div class="card">
+            <div class="card draft-card">
                 <h2>Unfinished run found</h2>
                 <p class="muted" style="margin-bottom:12px">A recording from ${fmtDate(new Date(draft.startedAt).toISOString())} wasn't saved.</p>
                 <div class="btn-row"><button class="btn btn-primary" id="draft-save">Save it</button><button class="btn" id="draft-discard">Discard</button></div>
             </div>` : ''}
         <div id="rec-map" class="map tall"></div>
-        <div class="card">
-            <div class="record-stats">
-                <div class="stat"><div class="label">Distance (${unitLabel()})</div><div class="value" id="r-dist">0.00</div></div>
+        <div class="card rec-sheet" id="rec-sheet">
+            <div class="record-stats big">
+                <div class="stat primary"><div class="label">Distance (${unitLabel()})</div><div class="value" id="r-dist">0.00</div></div>
                 <div class="stat"><div class="label">Time</div><div class="value" id="r-time">0:00</div></div>
                 <div class="stat"><div class="label">Avg pace (/${unitLabel()})</div><div class="value" id="r-pace">–</div></div>
             </div>
@@ -567,25 +682,58 @@ function renderRecord() {
     function renderControls() {
         if (finishForm.style.display !== 'none') { controls.innerHTML = ''; return; }
         if (Rec.status === 'idle') {
+            const voice = Store.settings().voiceCues;
             controls.innerHTML = `
-                <button class="btn btn-primary" id="r-start">Start</button>
-                <label class="small muted" style="display:flex;align-items:center;gap:6px;width:100%;justify-content:center">
-                    <input type="checkbox" id="r-sim"> Simulate GPS (10× speed, for trying it out)
-                </label>`;
+                <button class="round-btn go lg" id="r-start">Start</button>
+                <div class="record-options small muted">
+                    <label><input type="checkbox" id="r-voice" ${voice ? 'checked' : ''}> Voice updates every ${unitLabel()}</label>
+                    <label><input type="checkbox" id="r-sim"> Simulate GPS (10× speed, for trying it out)</label>
+                </div>`;
+            document.getElementById('r-voice').onchange = e => Store.saveSettings({ voiceCues: e.target.checked });
             document.getElementById('r-start').onclick = () => {
                 stopPreview();
                 Rec.start(document.getElementById('r-sim').checked);
                 follow = true;
             };
         } else if (Rec.status === 'recording') {
-            controls.innerHTML = '<button class="btn" id="r-pause">Pause</button>';
+            controls.innerHTML = '<button class="round-btn stop" id="r-lock" aria-label="Lock screen">🔒</button><button class="round-btn go lg" id="r-pause">Pause</button>';
             document.getElementById('r-pause').onclick = () => Rec.pause();
+            document.getElementById('r-lock').onclick = lockScreen;
         } else {
-            controls.innerHTML = '<button class="btn btn-primary" id="r-resume">Resume</button><button class="btn" id="r-finish">Finish</button>';
+            controls.innerHTML = '<button class="round-btn go lg" id="r-resume">Resume</button><button class="round-btn stop lg" id="r-finish">Finish</button>';
             document.getElementById('r-resume').onclick = () => Rec.resume();
             document.getElementById('r-finish').onclick = showFinish;
         }
+        sizeMap();
     }
+
+    // Stops pocket taps from pausing the run; press and hold to unlock.
+    function lockScreen() {
+        const overlay = document.createElement('div');
+        overlay.className = 'locked-overlay';
+        overlay.innerHTML = '<button type="button">🔒 Hold to unlock</button>';
+        const btn = overlay.firstChild;
+        let holdTimer = null;
+        const cancel = () => { clearTimeout(holdTimer); btn.textContent = '🔒 Hold to unlock'; };
+        btn.addEventListener('pointerdown', () => {
+            btn.textContent = 'Keep holding…';
+            holdTimer = setTimeout(() => { overlay.remove(); buzz(50); }, 800);
+        });
+        btn.addEventListener('pointerup', cancel);
+        btn.addEventListener('pointerleave', cancel);
+        overlay.addEventListener('contextmenu', e => e.preventDefault());
+        document.body.appendChild(overlay);
+        removeLock = () => overlay.remove();
+    }
+    let removeLock = () => {};
+
+    // On phones the map fills whatever the bottom sheet leaves free.
+    const sheet = document.getElementById('rec-sheet');
+    function sizeMap() {
+        document.body.style.setProperty('--sheet-h', `${sheet.offsetHeight - 16}px`);
+        map.invalidateSize();
+    }
+    const resizeObs = new ResizeObserver(sizeMap);
 
     function showFinish() {
         if (Rec.points.length < 2) {
@@ -596,6 +744,7 @@ function renderRecord() {
             return;
         }
         Rec.finish();
+        say('Run finished');
         finishForm.style.display = 'block';
         finishForm.elements.name.value = defaultRunName(new Date(Rec.startedAt));
         renderControls();
@@ -655,15 +804,23 @@ function renderRecord() {
 
     let lastStatus = null;
     const listener = () => {
+        document.body.classList.toggle('rec-active', Rec.status !== 'idle');
         if (Rec.status !== lastStatus) { lastStatus = Rec.status; renderControls(); }
         update();
     };
     Rec.listeners.add(listener);
     const tick = setInterval(update, 1000);
+    document.body.classList.toggle('rec-active', Rec.status !== 'idle');
     renderControls();
     update();
 
+    resizeObs.observe(sheet);
+
     cleanupView = () => {
+        resizeObs.disconnect();
+        document.body.classList.remove('rec-active');
+        removeLock();
+        document.body.style.removeProperty('--sheet-h');
         Rec.listeners.delete(listener);
         clearInterval(tick);
         stopPreview();
@@ -838,10 +995,12 @@ function renderSettings() {
                         <option value="mi" ${s.units === 'mi' ? 'selected' : ''}>Miles</option>
                     </select>
                 </label>
+                <label class="field" style="display:flex;align-items:center;gap:10px"><input name="voice" type="checkbox" ${s.voiceCues ? 'checked' : ''} style="width:auto;margin:0"> Spoken updates while recording (every ${unitLabel()}, pause/resume)</label>
                 <label class="field">Weekly distance goal (${unitLabel()})<input name="goal" type="number" min="1" step="0.5" value="${Geo.round(s.weeklyGoal / Geo.unitMeters(s.units), 1)}" required></label>
                 <button class="btn btn-primary" type="submit">Save</button>
             </form>
         </div>
+        ${installCard({ dismissible: false })}
         <div class="card">
             <h2>Your data</h2>
             <p class="muted small" style="margin-bottom:12px">Everything is stored in this browser only. Export a backup before clearing site data.</p>
@@ -853,6 +1012,7 @@ function renderSettings() {
             </div>
         </div>`;
 
+    bindInstallCard();
     document.getElementById('settings-form').onsubmit = e => {
         e.preventDefault();
         const fd = new FormData(e.target);
@@ -860,6 +1020,7 @@ function renderSettings() {
         Store.saveSettings({
             name: fd.get('name').trim() || 'Runner',
             units: u,
+            voiceCues: fd.get('voice') === 'on',
             // The goal box is in the units shown when the page loaded.
             weeklyGoal: parseFloat(fd.get('goal')) * Geo.unitMeters(s.units)
         });

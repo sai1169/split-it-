@@ -5,7 +5,7 @@ const Store = (() => {
     const SETTINGS_KEY = 'runtrack.settings';
     const DRAFT_KEY = 'runtrack.draft';
 
-    const defaultSettings = { name: 'Runner', units: 'km', weeklyGoal: 20000 };
+    const defaultSettings = { name: 'Runner', units: 'km', weeklyGoal: 20000, voiceCues: true };
 
     function read(key, fallback) {
         try {

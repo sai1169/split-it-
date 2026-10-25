@@ -2,9 +2,17 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <meta name="theme-color" content="#fc4c02">
+    <meta name="description" content="Record, analyse and track your runs.">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="RunTrack">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <title>RunTrack</title>
+    <link rel="manifest" href="manifest.webmanifest">
+    <link rel="icon" type="image/png" href="icons/icon-192.png">
+    <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
     <link rel="stylesheet" href="styles.css">
 </head>
@@ -13,10 +21,26 @@
         <div class="topbar-inner">
             <a href="#/feed" class="logo">RunTrack</a>
             <nav class="nav">
-                <a href="#/feed" data-route="feed">Feed</a>
-                <a href="#/profile" data-route="profile">You</a>
-                <a href="#/add" data-route="add">Add / Import</a>
-                <a href="#/settings" data-route="settings">Settings</a>
+                <a href="#/feed" data-route="feed">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 11l8-7 8 7v9h-5v-6H9v6H4z"/></svg>
+                    <span>Feed</span>
+                </a>
+                <a href="#/profile" data-route="profile">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-7 8-7s8 2.6 8 7"/></svg>
+                    <span>You</span>
+                </a>
+                <a href="#/record" data-route="record" class="nav-record">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="7"/></svg>
+                    <span>Record</span>
+                </a>
+                <a href="#/add" data-route="add">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+                    <span>Add</span>
+                </a>
+                <a href="#/settings" data-route="settings">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/></svg>
+                    <span>Settings</span>
+                </a>
             </nav>
             <a href="#/record" class="record-btn">● Record</a>
         </div>
@@ -29,5 +53,10 @@
     <script src="store.js"></script>
     <script src="charts.js"></script>
     <script src="app.js"></script>
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+        }
+    </script>
 </body>
 </html>
