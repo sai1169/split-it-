@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#fc4c02">
+    <title>RunTrack</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <header class="topbar">
+        <div class="topbar-inner">
+            <a href="#/feed" class="logo">RunTrack</a>
+            <nav class="nav">
+                <a href="#/feed" data-route="feed">Feed</a>
+                <a href="#/profile" data-route="profile">You</a>
+                <a href="#/add" data-route="add">Add / Import</a>
+                <a href="#/settings" data-route="settings">Settings</a>
+            </nav>
+            <a href="#/record" class="record-btn">● Record</a>
+        </div>
+    </header>
+
+    <main id="app"></main>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+    <script src="geo.js"></script>
+    <script src="store.js"></script>
+    <script src="charts.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
